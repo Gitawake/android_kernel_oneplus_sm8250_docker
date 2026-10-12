@@ -1,0 +1,56 @@
+diff --git a/security/selinux/ss/services.c b/security/selinux/ss/services.c
+index 00338355e973..4c2bd9efcb21 100644
+--- a/security/selinux/ss/services.c
++++ b/security/selinux/ss/services.c
+@@ -2136,7 +2136,7 @@ static int security_preserve_bools(struct selinux_state *state,
+  * This function will flush the access vector cache after
+  * loading the new policy.
+  */
+-int security_load_policy(struct selinux_state *state, void *data, size_t len)
++static int security_load_policy_locked(struct selinux_state *state, void *data, size_t len)
+ {
+ 	struct policydb *policydb;
+ 	struct sidtab *oldsidtab, *newsidtab;
+@@ -2905,7 +2905,7 @@ int security_get_bools(struct selinux_state *state,
+ }
+ 
+ 
+-int security_set_bools(struct selinux_state *state, int len, int *values)
++static int security_set_bools_locked(struct selinux_state *state, int len, int *values)
+ {
+ 	struct policydb *policydb;
+ 	int i, rc;
+@@ -3767,3 +3767,33 @@ int security_read_policy(struct selinux_state *state,
+ 	return 0;
+ 
+ }
++
++/* Serialize KSU policy snapshots with native policy writers. The mutex permits
++ * sleeping allocations; policy_rwlock continues to protect publication/readers. */
++#ifdef CONFIG_KSU
++DEFINE_MUTEX(ksu_selinux_policy_mutex);
++#endif
++int security_load_policy(struct selinux_state *state, void *data, size_t len)
++{
++ int ret;
++#ifdef CONFIG_KSU
++ mutex_lock(&ksu_selinux_policy_mutex);
++#endif
++ ret = security_load_policy_locked(state, data, len);
++#ifdef CONFIG_KSU
++ mutex_unlock(&ksu_selinux_policy_mutex);
++#endif
++ return ret;
++}
++int security_set_bools(struct selinux_state *state, int len, int *values)
++{
++ int ret;
++#ifdef CONFIG_KSU
++ mutex_lock(&ksu_selinux_policy_mutex);
++#endif
++ ret = security_set_bools_locked(state, len, values);
++#ifdef CONFIG_KSU
++ mutex_unlock(&ksu_selinux_policy_mutex);
++#endif
++ return ret;
++}

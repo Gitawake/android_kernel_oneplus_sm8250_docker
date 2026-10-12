@@ -1,0 +1,73 @@
+name: OnePlus 8 Pro LOS Docker + KernelSU Next
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: op8-docker-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 llvm-18 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi make bc bison flex libssl-dev libelf-dev python3 device-tree-compiler
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+      - name: Fetch exact LOS and official KSU-N sources
+        run: |
+          git init kernel
+          git -C kernel remote add origin https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
+          git -C kernel fetch --depth=1 origin 0970a5d23405622c10bc4ff60ef0ba30499611e1
+          git -C kernel checkout --detach FETCH_HEAD
+          git clone --depth=1 --branch v3.4.1 https://github.com/KernelSU-Next/KernelSU-Next.git kernel/KernelSU-Next
+          test "$(git -C kernel/KernelSU-Next rev-parse HEAD)" = 8f902aeb16033024143ae36cf711df902cf02fae
+      - name: Apply reviewed port and configure Docker support
+        run: bash integration/configure.sh kernel
+      - name: Compile KernelSU and SELinux first
+        run: |
+          set -o pipefail
+          cd kernel
+          args=(O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 DTC_EXT=/usr/bin/dtc CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-)
+          make -j"$(nproc)" "${args[@]}" prepare scripts
+          make -j"$(nproc)" "${args[@]}" security/selinux/ 2>&1 | tee ../selinux-build.log
+          make -k -j"$(nproc)" "${args[@]}" drivers/kernelsu/ 2>&1 | tee ../ksun-build.log
+      - name: Full kernel build
+        run: |
+          set -o pipefail
+          cd kernel
+          make -j"$(nproc)" O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 DTC_EXT=/usr/bin/dtc CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- 2>&1 | tee ../kernel-build.log
+      - name: Package boot with original LOS ramdisk and DTB
+        run: |
+          mkdir -p artifacts
+          echo '0b2e6adcd6cc7c15b2a8a31b2773523cdd2020980b99dcd5d32bebc2578b584c  inputs/boot-stock-los-23.2-20260313.img.gz' | sha256sum -c -
+          gzip -dc inputs/boot-stock-los-23.2-20260313.img.gz > stock-boot.img
+          git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools/mkbootimg
+          git -C tools/mkbootimg checkout d2bb0af5ba6d3198a3e99529c97eda1be0b5a093
+          python3 integration/repack_los_boot.py --stock stock-boot.img --kernel kernel/out/arch/arm64/boot/Image --output artifacts/boot-instantnoodlep-los-20260313-docker-ksun-v3.4.1.img --tools tools/mkbootimg > artifacts/boot-verification.json
+          cp kernel/out/arch/arm64/boot/Image kernel/out/.config kernel/out/Module.symvers artifacts/
+          cp kernel/config-verification.json artifacts/
+          find kernel/out -name '*.ko' -exec cp --parents '{}' artifacts/ \;
+          git rev-parse HEAD > artifacts/build-recipe-commit.txt
+          git -C kernel rev-parse HEAD > artifacts/los-commit.txt
+          git -C kernel/KernelSU-Next rev-parse HEAD > artifacts/ksun-commit.txt
+          clang --version > artifacts/toolchain.txt
+          echo 'Built for LOS 23.2-20260313 instantnoodlep. NOT DEVICE TESTED. Full Docker runtime validation is still required.' > artifacts/STATUS.txt
+          cd artifacts
+          sha256sum Image boot-*.img .config Module.symvers > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: instantnoodlep-docker-ksun-build
+          include-hidden-files: true
+          path: |
+            artifacts/
+            *-build.log
+            kernel/out/.config
+            kernel/config-verification.json
+          if-no-files-found: warn
