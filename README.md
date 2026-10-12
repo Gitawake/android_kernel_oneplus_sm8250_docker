@@ -25,3 +25,7 @@ Prefer a separate ext4 image for the Debian root/data on Android's F2FS /data. B
 Current Magisk boot and original LOS boot are backed up locally. The build candidate uses original LOS ramdisk with built-in KSU-N. Before any permanent flash, verify bootloader unlock/current slot, temporarily boot the candidate and test Android, Wi-Fi, root, SELinux Enforcing, logs and Docker. Do not assume a slot from another device or build. No phone partitions are modified by this build workflow.
 
 The supplied original boot input was recovered from Magisk's backup and its SHA-1 matched the backup identifier `cde15611b1ba8a2948539501559f2185c2ef6a5c`. CI verifies its compressed SHA-256 and checks ramdisk/DTB preservation when repacking.
+
+## Device-test finding and fix
+
+The first candidate booted Android with SELinux Enforcing and the manager signature was recognized, but the manager's exec-ed ksud lost the CLOEXEC driver fd and Android app seccomp blocked the reboot-based reinstallation handshake. The 4.19 port now exempts only the exact native ARM64 KSU fd-install magic request for the verified manager or an already-authorized root UID. Other calls still evaluate every seccomp filter; the driver's root ioctl authorization remains unchanged. This replaces the newer action-cache allow mechanism absent from 4.19.

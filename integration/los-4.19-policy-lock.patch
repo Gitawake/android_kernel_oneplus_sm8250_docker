@@ -1,3 +1,31 @@
+diff --git a/kernel/seccomp.c b/kernel/seccomp.c
+index b56f574e6aa0..072c35becd83 100644
+--- a/kernel/seccomp.c
++++ b/kernel/seccomp.c
+@@ -187,6 +187,10 @@ static int seccomp_check_filter(struct sock_filter *filter, unsigned int flen)
+  *
+  * Returns valid seccomp BPF response codes.
+  */
++#ifdef CONFIG_KSU
++extern bool ksu_seccomp_allow_install(const struct seccomp_data *sd);
++#endif
++
+ #define ACTION_ONLY(ret) ((s32)((ret) & (SECCOMP_RET_ACTION_FULL)))
+ static u32 seccomp_run_filters(const struct seccomp_data *sd,
+ 			       struct seccomp_filter **match)
+@@ -206,6 +210,12 @@ static u32 seccomp_run_filters(const struct seccomp_data *sd,
+ 		sd = &sd_local;
+ 	}
+ 
++#ifdef CONFIG_KSU
++	/* Only the permission-gated KSU fd-install handshake is exempted. */
++	if (ksu_seccomp_allow_install(sd))
++		return SECCOMP_RET_ALLOW;
++#endif
++
+ 	/*
+ 	 * All filters in the list are evaluated and the lowest BPF return
+ 	 * value always takes priority (ignoring the DATA).
 diff --git a/security/selinux/ss/services.c b/security/selinux/ss/services.c
 index 00338355e973..4c2bd9efcb21 100644
 --- a/security/selinux/ss/services.c

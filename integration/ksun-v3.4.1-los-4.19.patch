@@ -594,23 +594,42 @@ index 3d098d6..36baee1 100644
      const char *name, const struct file_operations *fops, void *priv, int flags,
      const struct inode *context_inode)
 diff --git a/kernel/infra/seccomp_cache.c b/kernel/infra/seccomp_cache.c
-index 6511066..1d118dd 100644
+index 6511066..d200255 100644
 --- a/kernel/infra/seccomp_cache.c
 +++ b/kernel/infra/seccomp_cache.c
-@@ -8,6 +8,12 @@
+@@ -8,6 +8,31 @@
  #include "klog.h" // IWYU pragma: keep
  #include "infra/seccomp_cache.h"
  
-+/* seccomp action caching was introduced in 5.11. This 4.14 tree always
++/* seccomp action caching was introduced in 5.11. This LOS 4.19 tree normally
 + * evaluates filters, so there is no cache state to update or reinterpret. */
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 11, 0)
++#include <linux/audit.h>
++#include <asm/unistd.h>
++#include "manager/manager_identity.h"
++#include "policy/allowlist.h"
++#include "uapi/supercall.h"
++
++/* Old kernels have no action cache to allow the KSU handshake through.
++ * Only authorize the exact fd-install request for the signed manager or an
++ * already-approved root UID. All other syscalls still evaluate all filters.
++ * Granting root remains subject to the driver's normal ioctl permission gate.
++ */
++bool ksu_seccomp_allow_install(const struct seccomp_data *sd)
++{
++    if (sd->arch != AUDIT_ARCH_AARCH64 || sd->nr != __NR_reboot ||
++        sd->args[0] != KSU_INSTALL_MAGIC1 ||
++        sd->args[1] != KSU_INSTALL_MAGIC2 || sd->args[2] != 0)
++        return false;
++    return is_manager() || ksu_is_allow_uid_for_current(current_uid().val);
++}
 +void ksu_seccomp_clear_cache(struct seccomp_filter *filter, int nr) { }
 +void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr) { }
 +#else
  struct action_cache {
  	DECLARE_BITMAP(allow_native, SECCOMP_ARCH_NATIVE_NR);
  #ifdef SECCOMP_ARCH_COMPAT
-@@ -62,4 +68,5 @@ void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr)
+@@ -62,4 +87,5 @@ void ksu_seccomp_allow_cache(struct seccomp_filter *filter, int nr)
          set_bit(nr, filter->cache.allow_compat);
      }
  #endif
