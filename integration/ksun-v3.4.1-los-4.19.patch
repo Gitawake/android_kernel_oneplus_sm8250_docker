@@ -10,6 +10,35 @@ index b9d91f8..9e7225d 100644
  
  obj-$(CONFIG_KSU) += kernelsu.o
  
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index 260a96c..4fa8260 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -198,6 +198,7 @@ int __init kernelsu_init(void)
+ 	return 0;
+ }
+ 
++#ifdef MODULE
+ void __exit kernelsu_exit(void)
+ {
+ 	// Phase 1: Stop all hooks first to prevent new callbacks
+@@ -231,12 +232,16 @@ void __exit kernelsu_exit(void)
+ 	put_cred(ksu_cred);
+ }
+ 
++#endif /* MODULE: built-in KSU cannot be unloaded */
++
+ #if NEED_OWN_STACKPROTECTOR
+ module_init(kernelsu_init_early);
+ #else
+ module_init(kernelsu_init);
+ #endif
++#ifdef MODULE
+ module_exit(kernelsu_exit);
++#endif
+ 
+ MODULE_LICENSE("GPL");
+ MODULE_AUTHOR("weishu");
 diff --git a/kernel/feature/kernel_umount.c b/kernel/feature/kernel_umount.c
 index 6934141..262afc0 100644
 --- a/kernel/feature/kernel_umount.c

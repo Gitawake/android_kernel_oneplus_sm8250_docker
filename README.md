@@ -29,3 +29,5 @@ The supplied original boot input was recovered from Magisk's backup and its SHA-
 ## Device-test finding and fix
 
 The first candidate booted Android with SELinux Enforcing and the manager signature was recognized, but the manager's exec-ed ksud lost the CLOEXEC driver fd and Android app seccomp blocked the reboot-based reinstallation handshake. The 4.19 port now exempts only the exact native ARM64 KSU fd-install magic request for the verified manager or an already-authorized root UID. Other calls still evaluate every seccomp filter; the driver's root ioctl authorization remains unchanged. This replaces the newer action-cache allow mechanism absent from 4.19.
+
+The seccomp-fixed candidate passed Android, Wi-Fi, KernelSU root, Enforcing and namespace/chroot tests. A baseline comparison found a new jump-label warning pointing to built-in KSU exit text. The port omits the module-unload callback when CONFIG_KSU=y, while preserving it for MODULE builds, so discarded exit text cannot leave a static-key jump entry.
