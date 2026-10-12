@@ -16,7 +16,7 @@ Open Actions → OnePlus 8 Pro LOS Docker + KernelSU Next → Run workflow. Push
 
 ## Runtime target
 
-Android stays as the host. Debian runs in a real root chroot, with Docker using namespaces and cgroup v1 controllers. The added controllers must be mounted in a dedicated Docker cgroup tree without changing Android's own controllers. Run dockerd directly with the cgroupfs driver: chroot does not start systemd as PID 1.
+Android stays as the host. Debian runs in a real root chroot. This device currently uses a hybrid cgroup layout: Android binds CPU/blkio/cpuset to v1 and memory to v2. Preserve those mounts. Docker needs a coherent view inside its mount namespace; verify available controllers and use a dedicated subtree. Do not rebind Android's memory controller or assume a generic desktop cgroup setup. A v2 view can expose memory and the newly enabled pids controller; CPU/IO limits require additional runtime planning because Android already owns the v1 hierarchies. Run dockerd directly with the cgroupfs driver: chroot does not start systemd as PID 1.
 
 Prefer a separate ext4 image for the Debian root/data on Android's F2FS /data. Bind /dev, mount proc/sysfs/devpts, verify mount propagation and overlay2, then test container creation, bridge networking, DNS, outbound traffic, published ports and Compose. Existing Android tethering and sing-box firewall rules must be preserved. Passing the kernel configuration check alone is not end-to-end Docker validation.
 

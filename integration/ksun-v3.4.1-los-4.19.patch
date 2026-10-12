@@ -482,7 +482,7 @@ index fd93400..35de11c 100644
  #define __ksyscall_count_args(...) __ksyscall_arg_n(__VA_ARGS__, 6, 5, 4, 3, 2, 1, 0)
  #define __ksyscall_concat(a, b) a##b
 diff --git a/kernel/infra/file_wrapper.c b/kernel/infra/file_wrapper.c
-index 3d098d6..9d72985 100644
+index 3d098d6..36baee1 100644
 --- a/kernel/infra/file_wrapper.c
 +++ b/kernel/infra/file_wrapper.c
 @@ -100,7 +100,7 @@ static int ksu_wrapper_iopoll(struct kiocb *kiocb, struct io_comp_batch *icb,
@@ -513,11 +513,11 @@ index 3d098d6..9d72985 100644
 +    struct ksu_file_wrapper *data = in->private_data;
 +    return data->orig->f_op->clone_file_range(data->orig, pos_in, out, pos_out, len);
 +}
-+static ssize_t ksu_wrapper_dedupe_file_range(struct file *in, u64 pos_in,
-+    u64 len, struct file *out, u64 pos_out)
++static int ksu_wrapper_dedupe_file_range(struct file *in, loff_t pos_in,
++    struct file *out, loff_t pos_out, u64 len)
 +{
 +    struct ksu_file_wrapper *data = out->private_data;
-+    return data->orig->f_op->dedupe_file_range(in, pos_in, len, data->orig, pos_out);
++    return data->orig->f_op->dedupe_file_range(in, pos_in, data->orig, pos_out, len);
 +}
 +#endif
 +
@@ -619,20 +619,19 @@ index 6511066..1d118dd 100644
 +}
 +#endif
 diff --git a/kernel/infra/su_mount_ns.c b/kernel/infra/su_mount_ns.c
-index 3d0631a..cd20250 100644
+index 3d0631a..5187c2c 100644
 --- a/kernel/infra/su_mount_ns.c
 +++ b/kernel/infra/su_mount_ns.c
-@@ -13,7 +13,9 @@
+@@ -13,7 +13,7 @@
  #include <linux/syscalls.h>
  #include <linux/task_work.h>
  #include <linux/version.h>
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
- #include <uapi/linux/mount.h>
-+#endif
+-#include <uapi/linux/mount.h>
++#include <linux/mount.h>
  
  #include "arch.h"
  #include "klog.h" // IWYU pragma: keep
-@@ -119,7 +121,11 @@ out:
+@@ -119,7 +119,11 @@ out:
  // individual mode , need CAP_SYS_ADMIN to perform unshare and remount
  static void ksu_mnt_ns_individual(void)
  {
@@ -644,7 +643,7 @@ index 3d0631a..cd20250 100644
      if (ret) {
          pr_warn("call ksys_unshare failed: %ld\n", ret);
          return;
-@@ -128,7 +134,15 @@ static void ksu_mnt_ns_individual(void)
+@@ -128,7 +132,15 @@ static void ksu_mnt_ns_individual(void)
      // make root mount private
      struct path root_path;
      get_fs_root(current->fs, &root_path);

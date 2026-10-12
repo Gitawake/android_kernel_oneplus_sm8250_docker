@@ -52,6 +52,7 @@ jobs:
           python3 integration/repack_los_boot.py --stock stock-boot.img --kernel kernel/out/arch/arm64/boot/Image --output artifacts/boot-instantnoodlep-los-20260313-docker-ksun-v3.4.1.img --tools tools/mkbootimg > artifacts/boot-verification.json
           cp kernel/out/arch/arm64/boot/Image kernel/out/.config kernel/out/Module.symvers artifacts/
           cp kernel/config-verification.json artifacts/
+          python3 integration/check_module_abi.py inputs/gspca_main-stock.ko kernel/out/Module.symvers > artifacts/stock-module-abi.json || echo "Original USB camera module ABI differs; inspect stock-module-abi.json and use rebuilt module if needed."
           find kernel/out -name '*.ko' -exec cp --parents '{}' artifacts/ \;
           git rev-parse HEAD > artifacts/build-recipe-commit.txt
           git -C kernel rev-parse HEAD > artifacts/los-commit.txt
